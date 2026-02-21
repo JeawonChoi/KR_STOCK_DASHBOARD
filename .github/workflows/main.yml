@@ -22,7 +22,7 @@ jobs:
     - name: 필요한 라이브러리 설치
       run: |
         python -m pip install --upgrade pip
-        pip install requests pandas beautifulsoup4 tqdm lxml
+        pip install requests pandas beautifulsoup4 tqdm lxml aiohttp nest-asyncio
 
     - name: 크롤링 스크립트 실행
       run: python main.py
