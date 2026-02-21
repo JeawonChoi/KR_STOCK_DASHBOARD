@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 from io import StringIO
 from tqdm import tqdm
 import os
+# [추가된 부분] 시간 계산을 위한 모듈 임포트
+from datetime import datetime, timedelta, timezone
 
 def set_naver_custom_fields(session, field_ids):
     """네이버 증권 시가총액 페이지의 추가 컬럼을 설정"""
@@ -34,7 +36,6 @@ def crawl_market_sum(session, desc_label):
                 
             df = df.dropna(subset=['종목명'])
             
-            # 종목코드 추출 (링크 href 기반)
             links = table.find_all('a', class_='tltle')
             codes = [link['href'].split('code=')[-1] for link in links]
             
@@ -55,17 +56,14 @@ def get_full_market_data():
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0'})
     
-    # 1차 크롤링 (매출액, 영업이익, 당기순이익, 자산총계, 부채총계, 외국인비율)
     group1 = ['sales', 'operating_profit', 'net_income', 'property_total', 'debt_total', 'foreign_rate']
     set_naver_custom_fields(session, group1)
     df1 = crawl_market_sum(session, "1차 데이터 수집")
     
-    # 2차 크롤링 (시가총액, PER, PBR, 거래량, 상장주식수)
     group2 = ['market_sum', 'per', 'pbr', 'quant', 'listed_stock_cnt']
     set_naver_custom_fields(session, group2)
     df2 = crawl_market_sum(session, "2차 데이터 수집")
     
-    # 병합
     common_cols = ['종목코드', '종목명']
     merged_df = pd.merge(df1, df2.drop(columns=['현재가', '전일비', '등락률'], errors='ignore'), on=common_cols, how='left')
     
@@ -116,6 +114,10 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
     """최종 대시보드 HTML 파일 생성 (모바일, PWA, 초기화 버튼 포함)"""
     print(f"모바일 앱 형태의 HTML 대시보드를 '{filename}'으로 생성 중입니다...")
     
+    # [추가된 부분] HTML을 생성하는 시점의 한국 시간(KST) 구하기
+    KST = timezone(timedelta(hours=9))
+    update_time_str = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
+    
     if '상장주식수' in df.columns:
         df = df.rename(columns={'상장주식수': '상장주식수(천주)'})
     
@@ -159,7 +161,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         <link rel="shortcut icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         
-        <title>국내 증시 대시보드 앱</title>
+        <title>국내 증시 대시보드</title>
         
         <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -239,12 +241,11 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
     
     with open(filename, "w", encoding="utf-8") as f:
         f.write(html_template)
-    print(f"\n[성공] 최종 통합 대시보드가 '{filename}' 이름으로 생성되었습니다.")
+    print(f"\n[성공] 최종 통합 대시보드가 '{filename}' 이름으로 생성되었습니다. (업데이트 시간: {update_time_str})")
 
 # ================= 실행부 =================
 if __name__ == "__main__":
     df = get_full_market_data()
     df = merge_treasury_stock(df, 'data.csv')
-    # 파일 이름을 "index.html"로 저장합니다. (GitHub Pages 호스팅용)
 
     process_and_save_html(df, filename="index.html", name_max_width=90)
