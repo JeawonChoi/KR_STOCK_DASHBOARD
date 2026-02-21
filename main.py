@@ -161,7 +161,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         <link rel="shortcut icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         
-        <title>국내 증시 대시보드</title>
+        <title>국내 증시 대시보드 앱</title>
         
         <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -200,6 +200,10 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             <div class="header-container">
                 <h2 class="fw-bold">국내 주식 대시보드</h2>
                 <button id="resetBtn" class="btn btn-outline-light btn-sm">🔄 초기화</button>
+            </div>
+            
+            <div class="alert alert-secondary text-center border-secondary text-light bg-dark">
+                <span class="badge bg-primary mb-2" style="font-size: 0.85rem;">⏱ 업데이트: {update_time_str}</span><br>
             </div>
             {html_table}
         </div>
