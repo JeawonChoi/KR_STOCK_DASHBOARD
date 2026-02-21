@@ -97,12 +97,13 @@ def get_full_market_data():
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0'})
     
-    # [수정] 1차 크롤링에 '보통주배당금(dividend)' 파라미터로 직접 수집
+    # 1차 데이터: 보통주배당금(dividend) 포함
     group1 = ['sales', 'operating_profit', 'net_income', 'property_total', 'debt_total', 'dividend']
     set_naver_custom_fields(session, group1)
     df1 = crawl_market_sum(session, "1차 데이터 수집")
     
-    group2 = ['market_sum', 'per', 'pbr', 'quant', 'listed_stock_cnt']
+    # [수정] 2차 데이터: 상장주식수(listed_stock_cnt) 제거
+    group2 = ['market_sum', 'per', 'pbr', 'quant']
     set_naver_custom_fields(session, group2)
     df2 = crawl_market_sum(session, "2차 데이터 수집")
     
@@ -116,7 +117,6 @@ def get_full_market_data():
     
     print("\n수집된 데이터를 바탕으로 재무비율을 계산합니다...")
     
-    # [새로 추가된 로직] 보통주배당금 컬럼명 맞추기 및 배당수익률 자동 계산
     div_col = next((c for c in merged_df.columns if '배당금' in c), None)
     if div_col:
         merged_df = merged_df.rename(columns={div_col: '보통주배당금(원)'})
@@ -180,12 +180,9 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
     KST = timezone(timedelta(hours=9))
     update_time_str = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     
-    if '상장주식수' in df.columns:
-        df = df.rename(columns={'상장주식수': '상장주식수(천주)'})
-    
-    # 두 지표 모두 표시
+    # [수정] 상장주식수 제거. (종목코드는 링크 생성을 위해 일단 남겨둠)
     cols = ['종목명', '종목코드', '현재가', '전일비', '등락률', '기관 순매매량', '외국인 순매매량', '외국인 보유율(%)', 
-            '시가총액', '매출액', '영업이익', '당기순이익', '부채비율', 'PER', 'PBR', '보통주배당금(원)', '배당수익률', '거래량', '상장주식수(천주)', '자사주 비율(%)']
+            '시가총액', '매출액', '영업이익', '당기순이익', '부채비율', 'PER', 'PBR', '보통주배당금(원)', '배당수익률', '거래량', '자사주 비율(%)']
     
     df = df[[c for c in cols if c in df.columns]]
     
@@ -240,14 +237,13 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         if col in df.columns:
             df[col] = df[col].apply(format_net_buy)
 
-    # 보통주배당금(원)도 정수 콤마 포맷 적용
-    int_cols = ['현재가', '보통주배당금(원)', '시가총액', '매출액', '영업이익', '당기순이익', '거래량', '상장주식수(천주)']
+    # [수정] 상장주식수 제외 적용
+    int_cols = ['현재가', '보통주배당금(원)', '시가총액', '매출액', '영업이익', '당기순이익', '거래량']
     for col in int_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype(int)
             df[col] = df[col].apply(lambda x: f"{x:,}" if x != 0 else '-')
             
-    # 배당수익률은 실수 소수점 포맷 적용
     float_cols = ['부채비율', '외국인 보유율(%)', 'PER', 'PBR', '배당수익률', '자사주 비율(%)']
     for col in float_cols:
         if col in df.columns:
@@ -258,6 +254,9 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         df['종목명'] = df.apply(
             lambda row: f'<a href="https://finance.naver.com/item/main.naver?code={row["종목코드"]}" target="_blank" class="text-info text-decoration-none fw-bold" style="display: inline-block; max-width: {name_max_width}px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;">{row["종목명"]}</a>', axis=1
         )
+
+    # [핵심] HTML 테이블 생성 직전에 '종목코드' 컬럼을 완전히 삭제하여 화면에서 숨김
+    df = df.drop(columns=['종목코드'], errors='ignore')
 
     html_table = df.to_html(classes='table table-dark table-striped table-hover align-middle nowrap', table_id='stockTable', index=False, escape=False)
     td_max_width = name_max_width + 5
@@ -320,6 +319,8 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             
             <div class="alert alert-secondary text-center border-secondary text-light bg-dark">
                 <span class="badge bg-primary mb-2" style="font-size: 0.85rem;">⏱ 업데이트: {update_time_str}</span><br>
+                ※ 📱 <strong>모바일 앱 모드:</strong> 좌측 '종목명' 고정, 좌우 스와이프 지원.<br>
+                ※ 상승/매수는 <strong><span style="color: #ff4d4d;">▲빨강</span></strong>, 하락/매도는 <strong><span style="color: #4da6ff;">▼파랑</span></strong> 기호와 함께 직관적으로 표기됩니다.
             </div>
             {html_table}
         </div>
@@ -343,13 +344,15 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                     }},
                     "searching": true,
                     "ordering": true,
-                    "order": [[ 8, "desc" ]], // 기본 정렬: 시가총액(인덱스 8) 내림차순
+                    // [수정] 종목코드 컬럼이 빠지면서 시가총액 위치가 7번 인덱스로 당겨짐
+                    "order": [[ 7, "desc" ]], 
                     "language": {{ "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/ko.json" }}
                 }});
 
                 $('#resetBtn').on('click', function() {{
                     table.search('').columns().search('');
-                    table.order([[ 8, "desc" ]]);
+                    // [수정] 초기화 시 정렬도 7번(시가총액)으로 복원
+                    table.order([[ 7, "desc" ]]);
                     table.draw();
                 }});
             }});
