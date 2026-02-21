@@ -199,11 +199,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                 <h2 class="fw-bold">국내 주식 대시보드</h2>
                 <button id="resetBtn" class="btn btn-outline-light btn-sm">🔄 초기화</button>
             </div>
-            
-            <div class="alert alert-secondary text-center border-secondary text-light bg-dark">
-                ※ 📱 <strong>모바일 앱 모드:</strong> 좌측 '종목명' 고정, 좌우 스와이프 지원.<br>
-                ※ 브라우저 메뉴에서 <strong>'홈 화면에 추가'</strong>를 누르면 앱처럼 쓸 수 있습니다.
-            </div>
             {html_table}
         </div>
 
@@ -251,4 +246,5 @@ if __name__ == "__main__":
     df = get_full_market_data()
     df = merge_treasury_stock(df, 'data.csv')
     # 파일 이름을 "index.html"로 저장합니다. (GitHub Pages 호스팅용)
+
     process_and_save_html(df, filename="index.html", name_max_width=90)
