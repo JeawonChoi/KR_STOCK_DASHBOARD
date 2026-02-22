@@ -1,4 +1,4 @@
-# Ver.05 - 종목코드, 상장주식수 컬럼 삭제
+# Ver.07 - 검색중 기능 추가
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -98,12 +98,10 @@ def get_full_market_data():
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0'})
     
-    # 1차 데이터: 보통주배당금(dividend) 포함
     group1 = ['sales', 'operating_profit', 'net_income', 'property_total', 'debt_total', 'dividend']
     set_naver_custom_fields(session, group1)
     df1 = crawl_market_sum(session, "1차 데이터 수집")
     
-    # [수정] 2차 데이터: 상장주식수(listed_stock_cnt) 제거
     group2 = ['market_sum', 'per', 'pbr', 'quant']
     set_naver_custom_fields(session, group2)
     df2 = crawl_market_sum(session, "2차 데이터 수집")
@@ -181,7 +179,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
     KST = timezone(timedelta(hours=9))
     update_time_str = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     
-    # [수정] 상장주식수 제거. (종목코드는 링크 생성을 위해 일단 남겨둠)
     cols = ['종목명', '종목코드', '현재가', '전일비', '등락률', '기관 순매매량', '외국인 순매매량', '외국인 보유율(%)', 
             '시가총액', '매출액', '영업이익', '당기순이익', '부채비율', 'PER', 'PBR', '보통주배당금(원)', '배당수익률', '거래량', '자사주 비율(%)']
     
@@ -238,7 +235,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         if col in df.columns:
             df[col] = df[col].apply(format_net_buy)
 
-    # [수정] 상장주식수 제외 적용
     int_cols = ['현재가', '보통주배당금(원)', '시가총액', '매출액', '영업이익', '당기순이익', '거래량']
     for col in int_cols:
         if col in df.columns:
@@ -253,10 +249,9 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
 
     if '종목명' in df.columns and '종목코드' in df.columns:
         df['종목명'] = df.apply(
-            lambda row: f'<a href="https://finance.naver.com/item/main.naver?code={row["종목코드"]}" target="_blank" class="text-info text-decoration-none fw-bold" style="display: inline-block; max-width: {name_max_width}px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;">{row["종목명"]}</a>', axis=1
+            lambda row: f'<a href="https://finance.naver.com/item/main.naver?code={row["종목코드"]}" target="_blank" class="text-info text-decoration-none fw-bold stock-name-link">{row["종목명"]}</a>', axis=1
         )
 
-    # [핵심] HTML 테이블 생성 직전에 '종목코드' 컬럼을 완전히 삭제하여 화면에서 숨김
     df = df.drop(columns=['종목코드'], errors='ignore')
 
     html_table = df.to_html(classes='table table-dark table-striped table-hover align-middle nowrap', table_id='stockTable', index=False, escape=False)
@@ -277,7 +272,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         <link rel="shortcut icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         
-        <title>국내 증시 대시보드</title>
+        <title>국내 증시 대시보드 앱</title>
         
         <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -288,34 +283,57 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             body {{ padding: 15px; background-color: #121212; font-size: 0.85rem; }}
             .container-fluid {{ background-color: #1e1e1e; padding: 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }}
             
-            .header-container {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }}
             h2 {{ color: #ffffff; font-size: 1.5rem; margin: 0; }}
             
             #stockTable th {{ background-color: #2c2c2c; color: #e0e0e0; text-align: center; vertical-align: middle; white-space: nowrap; }}
             #stockTable td {{ text-align: right; white-space: nowrap; border-color: #333; }}
             
-            #stockTable td:nth-child(1) {{ text-align: left; max-width: {td_max_width}px; }}
+            .stock-name-link {{
+                display: inline-block;
+                max-width: {name_max_width}px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                vertical-align: middle;
+            }}
+            #stockTable td:nth-child(1) {{ 
+                text-align: left; 
+                max-width: {td_max_width}px; 
+                min-width: {td_max_width}px; 
+            }}
+            
             #stockTable td:nth-child(2) {{ text-align: center; }}
             td:contains('-') {{ color: #777; }}
             
             th.dtfc-fixed-left, td.dtfc-fixed-left {{ background-color: #1e1e1e !important; z-index: 1; text-align: left !important; }}
             thead th.dtfc-fixed-left {{ background-color: #2c2c2c !important; z-index: 2; border-bottom: 1px solid #444; }}
 
+            .dataTables_info {{ color: #adb5bd !important; font-size: 0.8rem; padding-top: 10px; }}
+
             @media (max-width: 768px) {{
                 body {{ padding: 5px; font-size: 0.75rem; }}
                 .container-fluid {{ padding: 10px; }}
-                h2 {{ font-size: 1.1rem; }}
-                .btn-sm {{ font-size: 0.75rem; padding: 0.25rem 0.5rem; }}
+                h2 {{ font-size: 1.2rem; }}
                 .alert {{ font-size: 0.75rem; padding: 8px; margin-bottom: 10px; }}
-                .dataTables_filter input {{ max-width: 130px; }}
             }}
         </style>
     </head>
     <body>
         <div class="container-fluid">
-            <div class="header-container">
-                <h2 class="fw-bold">국내 주식 대시보드</h2>
-                <button id="resetBtn" class="btn btn-outline-light btn-sm">🔄 초기화</button>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="fw-bold m-0">국내 주식 대시보드</h2>
+                <button id="resetBtn" class="btn btn-outline-light btn-sm" style="min-width: 80px;">
+                    <span class="spinner-border spinner-border-sm d-none" id="resetSpinner" role="status" aria-hidden="true"></span>
+                    <span id="resetText">🔄 초기화</span>
+                </button>
+            </div>
+            
+            <div class="input-group input-group-sm mb-3">
+                <input type="text" id="customSearchInput" class="form-control bg-dark text-light border-secondary" placeholder="종목명 검색 (입력 후 검색 버튼 또는 엔터)">
+                <button class="btn btn-primary" type="button" id="customSearchBtn" style="min-width: 80px;">
+                    <span class="spinner-border spinner-border-sm d-none" id="searchSpinner" role="status" aria-hidden="true"></span>
+                    <span id="searchText">🔍 검색</span>
+                </button>
             </div>
             
             <div class="alert alert-secondary text-center border-secondary text-light bg-dark">
@@ -333,26 +351,74 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <script>
             $(document).ready( function () {{
                 var table = $('#stockTable').DataTable({{
+                    "dom": 'rti', 
                     "paging": false,
-                    "scrollY": "70vh",
+                    "scrollY": "65vh",
                     "scrollX": true,
                     "scrollCollapse": true,
                     "fixedHeader": true,
                     "fixedColumns": {{
                         "leftColumns": 1
                     }},
-                    "searching": true,
+                    "searching": true, 
                     "ordering": true,
-                    // [수정] 종목코드 컬럼이 빠지면서 시가총액 위치가 7번 인덱스로 당겨짐
                     "order": [[ 7, "desc" ]], 
-                    "language": {{ "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/ko.json" }}
+                    "language": {{ 
+                        "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/ko.json",
+                        "info": "총 _TOTAL_개 종목",
+                        "infoFiltered": "(전체 _MAX_개 중 필터링됨)",
+                        "infoEmpty": "검색 결과가 없습니다."
+                    }}
                 }});
 
+                // 검색 실행 로직 (로딩 애니메이션 포함)
+                function performSearch() {{
+                    var keyword = $('#customSearchInput').val();
+                    var $btn = $('#customSearchBtn');
+                    var $spinner = $('#searchSpinner');
+                    var $text = $('#searchText');
+
+                    $btn.prop('disabled', true);
+                    $spinner.removeClass('d-none');
+                    $text.text(' 처리중');
+
+                    setTimeout(function() {{
+                        table.search(keyword).draw();
+                        
+                        $btn.prop('disabled', false);
+                        $spinner.addClass('d-none');
+                        $text.text('🔍 검색');
+                    }}, 150);
+                }}
+
+                $('#customSearchBtn').on('click', performSearch);
+
+                $('#customSearchInput').on('keypress', function(e) {{
+                    if (e.which == 13 || e.keyCode == 13) {{
+                        performSearch();
+                    }}
+                }});
+
+                // 초기화 실행 로직 (로딩 애니메이션 포함)
                 $('#resetBtn').on('click', function() {{
-                    table.search('').columns().search('');
-                    // [수정] 초기화 시 정렬도 7번(시가총액)으로 복원
-                    table.order([[ 7, "desc" ]]);
-                    table.draw();
+                    var $btn = $(this);
+                    var $spinner = $('#resetSpinner');
+                    var $text = $('#resetText');
+
+                    $btn.prop('disabled', true);
+                    $spinner.removeClass('d-none');
+                    $text.text(' 복구중');
+
+                    setTimeout(function() {{
+                        $('#customSearchInput').val('');
+                        table.search('').columns().search('');
+                        table.order([[ 7, "desc" ]]);
+                        table.draw();
+
+                        $btn.prop('disabled', false);
+                        $spinner.addClass('d-none');
+                        $text.text('🔄 초기화');
+                    }}, 150);
                 }});
             }});
         </script>
