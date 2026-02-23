@@ -2,8 +2,8 @@ name: Daily Stock Data Auto Update
 
 on:
   schedule:
-    # 매일 평일(화~토) 한국 시간 00시 00분에 실행 (UTC 기준 15:00)
-    - cron: '0 15 * * 1-5'
+    # 매일 평일(화~토) 한국 시간 20시 30분에 실행 (UTC 기준 11:30)
+    - cron: '30 11 * * 1-5'
   workflow_dispatch: # 내가 원할 때 수동으로 버튼을 눌러 실행할 수 있는 옵션
 
 jobs:
