@@ -1,4 +1,4 @@
-# Ver.08 - 조회 기능 추가
+# Ver.08 - 조회 기능 추가, 영업이익률 추가
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -116,6 +116,7 @@ def get_full_market_data():
     
     print("\n수집된 데이터를 바탕으로 재무비율을 계산합니다...")
     
+    # 1. 보통주배당금 및 배당수익률 계산
     div_col = next((c for c in merged_df.columns if '배당금' in c), None)
     if div_col:
         merged_df = merged_df.rename(columns={div_col: '보통주배당금(원)'})
@@ -132,6 +133,17 @@ def get_full_market_data():
         merged_df['보통주배당금(원)'] = 0
         merged_df['배당수익률'] = 0
 
+    # 2. 영업이익률(%) 계산 로직 추가
+    if '매출액' in merged_df.columns and '영업이익' in merged_df.columns:
+        merged_df['매출액_num'] = pd.to_numeric(merged_df['매출액'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+        merged_df['영업이익_num'] = pd.to_numeric(merged_df['영업이익'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+        merged_df['영업이익률(%)'] = merged_df.apply(
+            lambda x: (x['영업이익_num'] / x['매출액_num'] * 100) if x['매출액_num'] > 0 else 0, axis=1
+        )
+    else:
+        merged_df['영업이익률(%)'] = 0
+
+    # 3. 부채비율 계산
     asset_col = next((c for c in merged_df.columns if '자산총계' in c), None)
     debt_col = next((c for c in merged_df.columns if '부채총계' in c), None)
     
@@ -179,8 +191,9 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
     KST = timezone(timedelta(hours=9))
     update_time_str = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     
+    # [수정] 보여줄 컬럼 순서에 '영업이익률(%)' 추가
     cols = ['종목명', '종목코드', '현재가', '전일비', '등락률', '기관 순매매량', '외국인 순매매량', '외국인 보유율(%)', 
-            '시가총액', '매출액', '영업이익', '당기순이익', '부채비율', 'PER', 'PBR', '보통주배당금(원)', '배당수익률', '거래량', '자사주 비율(%)']
+            '시가총액', '매출액', '영업이익', '영업이익률(%)', '당기순이익', '부채비율', 'PER', 'PBR', '보통주배당금(원)', '배당수익률', '거래량', '자사주 비율(%)']
     
     df = df[[c for c in cols if c in df.columns]]
     
@@ -241,7 +254,8 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype(int)
             df[col] = df[col].apply(lambda x: f"{x:,}" if x != 0 else '-')
             
-    float_cols = ['부채비율', '외국인 보유율(%)', 'PER', 'PBR', '배당수익률', '자사주 비율(%)']
+    # [수정] 실수형 포맷에 '영업이익률(%)' 포함
+    float_cols = ['영업이익률(%)', '부채비율', '외국인 보유율(%)', 'PER', 'PBR', '배당수익률', '자사주 비율(%)']
     for col in float_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].astype(str).str.replace('%', '').str.replace(',', ''), errors='coerce')
@@ -252,6 +266,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             lambda row: f'<a href="https://finance.naver.com/item/main.naver?code={row["종목코드"]}" target="_blank" class="text-info text-decoration-none fw-bold" style="display: inline-block; max-width: {name_max_width}px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;">{row["종목명"]}</a>', axis=1
         )
 
+    # 종목코드를 숨기면서 전체 인덱스가 하나씩 앞으로 당겨집니다.
     df = df.drop(columns=['종목코드'], errors='ignore')
 
     html_table = df.to_html(classes='table table-dark table-striped table-hover align-middle nowrap', table_id='stockTable', index=False, escape=False)
@@ -361,32 +376,39 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         </div>
                         
                         <div class="col-6 col-md-4">
-                            <div class="filter-label">PER (배)</div>
+                            <div class="filter-label">영업이익률 (%)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_12" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_12" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_10" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_10" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         <div class="col-6 col-md-4">
-                            <div class="filter-label">PBR (배)</div>
+                            <div class="filter-label">PER (배)</div>
                             <div class="input-group input-group-sm">
                                 <input type="number" id="min_col_13" class="form-control bg-dark text-light border-secondary" placeholder="최소">
                                 <input type="number" id="max_col_13" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         <div class="col-6 col-md-4">
-                            <div class="filter-label">부채비율 (%)</div>
+                            <div class="filter-label">PBR (배)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_11" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_11" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_14" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_14" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         
                         <div class="col-6 col-md-4">
+                            <div class="filter-label">부채비율 (%)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_12" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_12" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4">
                             <div class="filter-label">배당수익률 (%)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_15" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_15" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_16" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_16" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         <div class="col-6 col-md-4">
@@ -396,11 +418,12 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                                 <input type="number" id="max_col_6" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
+
                         <div class="col-6 col-md-4">
                             <div class="filter-label">자사주 비율 (%)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_17" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_17" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_18" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_18" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                     </div>
@@ -412,7 +435,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         </button>
                     </div>
                 </div>
-            </div>     
+            </div>
             
             {html_table}
         </div>
@@ -425,7 +448,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
 
         <script>
             $(document).ready( function () {{
-                // 구간 검색(Filtering) 설정
                 $.fn.dataTable.ext.search.push(
                     function( settings, data, dataIndex ) {{
                         function parseVal(val) {{
@@ -438,17 +460,18 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                             return isNaN(num) ? null : num;
                         }}
 
-                        // [수정됨] 총 9가지 필터 항목 인덱스 매핑
+                        // [수정됨] 총 10가지 항목의 인덱스 매핑 (영업이익률: 10번 인덱스 추가)
                         var filters = [
                             {{ col: 1,  minId: '#min_col_1',  maxId: '#max_col_1' }},   // 현재가
                             {{ col: 7,  minId: '#min_col_7',  maxId: '#max_col_7' }},   // 시가총액
                             {{ col: 9,  minId: '#min_col_9',  maxId: '#max_col_9' }},   // 영업이익
-                            {{ col: 12, minId: '#min_col_12', maxId: '#max_col_12' }},  // PER
-                            {{ col: 13, minId: '#min_col_13', maxId: '#max_col_13' }},  // PBR
-                            {{ col: 11, minId: '#min_col_11', maxId: '#max_col_11' }},  // 부채비율
-                            {{ col: 15, minId: '#min_col_15', maxId: '#max_col_15' }},  // 배당수익률
+                            {{ col: 10, minId: '#min_col_10', maxId: '#max_col_10' }},  // 영업이익률(%) <- 새로 추가됨
+                            {{ col: 13, minId: '#min_col_13', maxId: '#max_col_13' }},  // PER
+                            {{ col: 14, minId: '#min_col_14', maxId: '#max_col_14' }},  // PBR
+                            {{ col: 12, minId: '#min_col_12', maxId: '#max_col_12' }},  // 부채비율
+                            {{ col: 16, minId: '#min_col_16', maxId: '#max_col_16' }},  // 배당수익률
                             {{ col: 6,  minId: '#min_col_6',  maxId: '#max_col_6' }},   // 외국인 보유율
-                            {{ col: 17, minId: '#min_col_17', maxId: '#max_col_17' }}   // 자사주 비율
+                            {{ col: 18, minId: '#min_col_18', maxId: '#max_col_18' }}   // 자사주 비율
                         ];
 
                         for (var i = 0; i < filters.length; i++) {{
@@ -490,7 +513,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                     }}
                 }});
 
-                // 1. 일반 검색 
                 function performSearch() {{
                     var keyword = $('#customSearchInput').val();
                     var $btn = $('#customSearchBtn');
@@ -514,12 +536,10 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                     if (e.which == 13 || e.keyCode == 13) {{ performSearch(); }}
                 }});
 
-                // 2. 필터 패널 열기/닫기
                 $('#toggleFilterBtn').on('click', function() {{
                     $('#filterPanel').slideToggle('fast');
                 }});
 
-                // 3. 구간 필터 적용 버튼
                 $('#applyRangeBtn').on('click', function() {{
                     var $btn = $(this);
                     var $spinner = $('#rangeSpinner');
@@ -538,13 +558,11 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                     }}, 150);
                 }});
 
-                // 4. 구간 필터 지우기 
                 $('#clearRangeBtn').on('click', function() {{
                     $('#filterPanel input').val('');
                     table.draw();
                 }});
 
-                // 5. 전체 초기화 (검색어 + 모든 필터 지우기)
                 $('#resetBtn').on('click', function() {{
                     var $btn = $(this);
                     var $spinner = $('#resetSpinner');
