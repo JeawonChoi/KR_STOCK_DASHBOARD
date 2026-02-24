@@ -1,4 +1,4 @@
-# Ver.07 - 검색중 기능 추가
+# Ver.08 - 조회 기능 추가
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -249,7 +249,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
 
     if '종목명' in df.columns and '종목코드' in df.columns:
         df['종목명'] = df.apply(
-            lambda row: f'<a href="https://finance.naver.com/item/main.naver?code={row["종목코드"]}" target="_blank" class="text-info text-decoration-none fw-bold stock-name-link">{row["종목명"]}</a>', axis=1
+            lambda row: f'<a href="https://finance.naver.com/item/main.naver?code={row["종목코드"]}" target="_blank" class="text-info text-decoration-none fw-bold" style="display: inline-block; max-width: {name_max_width}px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;">{row["종목명"]}</a>', axis=1
         )
 
     df = df.drop(columns=['종목코드'], errors='ignore')
@@ -285,23 +285,12 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             
             h2 {{ color: #ffffff; font-size: 1.5rem; margin: 0; }}
             
+            .update-time {{ font-size: 0.75rem; color: #a0a0a0; font-weight: normal; margin-left: 8px; }}
+            
             #stockTable th {{ background-color: #2c2c2c; color: #e0e0e0; text-align: center; vertical-align: middle; white-space: nowrap; }}
             #stockTable td {{ text-align: right; white-space: nowrap; border-color: #333; }}
             
-            .stock-name-link {{
-                display: inline-block;
-                max-width: {name_max_width}px;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                vertical-align: middle;
-            }}
-            #stockTable td:nth-child(1) {{ 
-                text-align: left; 
-                max-width: {td_max_width}px; 
-                min-width: {td_max_width}px; 
-            }}
-            
+            #stockTable td:nth-child(1) {{ text-align: left; max-width: {td_max_width}px; min-width: {td_max_width}px; }}
             #stockTable td:nth-child(2) {{ text-align: center; }}
             td:contains('-') {{ color: #777; }}
             
@@ -309,36 +298,122 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             thead th.dtfc-fixed-left {{ background-color: #2c2c2c !important; z-index: 2; border-bottom: 1px solid #444; }}
 
             .dataTables_info {{ color: #adb5bd !important; font-size: 0.8rem; padding-top: 10px; }}
+            
+            .filter-label {{ font-size: 0.75rem; color: #adb5bd; margin-bottom: 2px; }}
 
             @media (max-width: 768px) {{
                 body {{ padding: 5px; font-size: 0.75rem; }}
                 .container-fluid {{ padding: 10px; }}
                 h2 {{ font-size: 1.2rem; }}
+                
+                .update-time {{ font-size: 0.6rem; margin-left: 6px; }}
+                
                 .alert {{ font-size: 0.75rem; padding: 8px; margin-bottom: 10px; }}
+                .filter-label {{ font-size: 0.65rem; }}
             }}
         </style>
     </head>
     <body>
         <div class="container-fluid">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <h2 class="fw-bold m-0">국내 주식 대시보드</h2>
+                <div class="d-flex align-items-baseline">
+                    <h2 class="fw-bold m-0">국내 주식 대시보드</h2>
+                    <span class="update-time">⏱ 업데이트: {update_time_str}</span>
+                </div>
                 <button id="resetBtn" class="btn btn-outline-light btn-sm" style="min-width: 80px;">
                     <span class="spinner-border spinner-border-sm d-none" id="resetSpinner" role="status" aria-hidden="true"></span>
                     <span id="resetText">🔄 초기화</span>
                 </button>
             </div>
             
-            <div class="input-group input-group-sm mb-3">
-                <input type="text" id="customSearchInput" class="form-control bg-dark text-light border-secondary" placeholder="종목명 검색 (입력 후 검색 버튼 또는 엔터)">
-                <button class="btn btn-primary" type="button" id="customSearchBtn" style="min-width: 80px;">
+            <div class="input-group input-group-sm mb-2">
+                <input type="text" id="customSearchInput" class="form-control bg-dark text-light border-secondary" placeholder="종목명 검색 (엔터)">
+                <button class="btn btn-primary" type="button" id="customSearchBtn" style="min-width: 70px;">
                     <span class="spinner-border spinner-border-sm d-none" id="searchSpinner" role="status" aria-hidden="true"></span>
                     <span id="searchText">🔍 검색</span>
                 </button>
+                <button class="btn btn-outline-info" type="button" id="toggleFilterBtn" style="min-width: 70px;">⚙️ 구간</button>
             </div>
             
-            <div class="alert alert-secondary text-center border-secondary text-light bg-dark">
-                <span class="badge bg-primary mb-2" style="font-size: 0.85rem;">⏱ 업데이트: {update_time_str}</span><br>
-            </div>
+            <div id="filterPanel" class="mb-3" style="display: none;">
+                <div class="card card-body bg-dark border-secondary p-2">
+                    <div class="row g-2 mb-2">
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">현재가 (원)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_1" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_1" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">시가총액 (억)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_7" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_7" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">영업이익 (억)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_9" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_9" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">PER (배)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_12" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_12" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">PBR (배)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_13" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_13" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">부채비율 (%)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_11" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_11" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">배당수익률 (%)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_15" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_15" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">외국인 보유율 (%)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_6" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_6" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <div class="filter-label">자사주 비율 (%)</div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="min_col_17" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_17" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end mt-1">
+                        <button class="btn btn-outline-light btn-sm me-2" id="clearRangeBtn">필터 지우기</button>
+                        <button class="btn btn-info btn-sm" id="applyRangeBtn" style="min-width: 80px;">
+                            <span class="spinner-border spinner-border-sm d-none" id="rangeSpinner" role="status" aria-hidden="true"></span>
+                            <span id="rangeText">적용하기</span>
+                        </button>
+                    </div>
+                </div>
+            </div>     
+            
             {html_table}
         </div>
 
@@ -350,10 +425,54 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
 
         <script>
             $(document).ready( function () {{
+                // 구간 검색(Filtering) 설정
+                $.fn.dataTable.ext.search.push(
+                    function( settings, data, dataIndex ) {{
+                        function parseVal(val) {{
+                            if (!val || val === '-' || val === 'N/A') return null;
+                            var tmp = document.createElement("DIV");
+                            tmp.innerHTML = val;
+                            var text = tmp.textContent || tmp.innerText || "";
+                            text = text.replace(/,/g, '').replace(/%/g, '').replace(/▲/g, '').replace(/▼/g, '').replace(/\+/g, '').trim();
+                            var num = parseFloat(text);
+                            return isNaN(num) ? null : num;
+                        }}
+
+                        // [수정됨] 총 9가지 필터 항목 인덱스 매핑
+                        var filters = [
+                            {{ col: 1,  minId: '#min_col_1',  maxId: '#max_col_1' }},   // 현재가
+                            {{ col: 7,  minId: '#min_col_7',  maxId: '#max_col_7' }},   // 시가총액
+                            {{ col: 9,  minId: '#min_col_9',  maxId: '#max_col_9' }},   // 영업이익
+                            {{ col: 12, minId: '#min_col_12', maxId: '#max_col_12' }},  // PER
+                            {{ col: 13, minId: '#min_col_13', maxId: '#max_col_13' }},  // PBR
+                            {{ col: 11, minId: '#min_col_11', maxId: '#max_col_11' }},  // 부채비율
+                            {{ col: 15, minId: '#min_col_15', maxId: '#max_col_15' }},  // 배당수익률
+                            {{ col: 6,  minId: '#min_col_6',  maxId: '#max_col_6' }},   // 외국인 보유율
+                            {{ col: 17, minId: '#min_col_17', maxId: '#max_col_17' }}   // 자사주 비율
+                        ];
+
+                        for (var i = 0; i < filters.length; i++) {{
+                            var f = filters[i];
+                            var minStr = $(f.minId).val();
+                            var maxStr = $(f.maxId).val();
+                            
+                            if (minStr !== "" || maxStr !== "") {{
+                                var cellVal = parseVal(data[f.col]);
+                                
+                                if (cellVal === null) return false; 
+                                
+                                if (minStr !== "" && cellVal < parseFloat(minStr)) return false;
+                                if (maxStr !== "" && cellVal > parseFloat(maxStr)) return false;
+                            }}
+                        }}
+                        return true; 
+                    }}
+                );
+
                 var table = $('#stockTable').DataTable({{
                     "dom": 'rti', 
                     "paging": false,
-                    "scrollY": "65vh",
+                    "scrollY": "60vh",
                     "scrollX": true,
                     "scrollCollapse": true,
                     "fixedHeader": true,
@@ -367,11 +486,11 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/ko.json",
                         "info": "총 _TOTAL_개 종목",
                         "infoFiltered": "(전체 _MAX_개 중 필터링됨)",
-                        "infoEmpty": "검색 결과가 없습니다."
+                        "infoEmpty": "조건에 맞는 검색 결과가 없습니다."
                     }}
                 }});
 
-                // 검색 실행 로직 (로딩 애니메이션 포함)
+                // 1. 일반 검색 
                 function performSearch() {{
                     var keyword = $('#customSearchInput').val();
                     var $btn = $('#customSearchBtn');
@@ -380,11 +499,10 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
 
                     $btn.prop('disabled', true);
                     $spinner.removeClass('d-none');
-                    $text.text(' 처리중');
+                    $text.text(' 중...');
 
                     setTimeout(function() {{
                         table.search(keyword).draw();
-                        
                         $btn.prop('disabled', false);
                         $spinner.addClass('d-none');
                         $text.text('🔍 검색');
@@ -392,14 +510,41 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                 }}
 
                 $('#customSearchBtn').on('click', performSearch);
-
                 $('#customSearchInput').on('keypress', function(e) {{
-                    if (e.which == 13 || e.keyCode == 13) {{
-                        performSearch();
-                    }}
+                    if (e.which == 13 || e.keyCode == 13) {{ performSearch(); }}
                 }});
 
-                // 초기화 실행 로직 (로딩 애니메이션 포함)
+                // 2. 필터 패널 열기/닫기
+                $('#toggleFilterBtn').on('click', function() {{
+                    $('#filterPanel').slideToggle('fast');
+                }});
+
+                // 3. 구간 필터 적용 버튼
+                $('#applyRangeBtn').on('click', function() {{
+                    var $btn = $(this);
+                    var $spinner = $('#rangeSpinner');
+                    var $text = $('#rangeText');
+
+                    $btn.prop('disabled', true);
+                    $spinner.removeClass('d-none');
+                    $text.text(' 적용중');
+
+                    setTimeout(function() {{
+                        table.draw(); 
+                        $btn.prop('disabled', false);
+                        $spinner.addClass('d-none');
+                        $text.text('적용하기');
+                        $('#filterPanel').slideUp('fast'); 
+                    }}, 150);
+                }});
+
+                // 4. 구간 필터 지우기 
+                $('#clearRangeBtn').on('click', function() {{
+                    $('#filterPanel input').val('');
+                    table.draw();
+                }});
+
+                // 5. 전체 초기화 (검색어 + 모든 필터 지우기)
                 $('#resetBtn').on('click', function() {{
                     var $btn = $(this);
                     var $spinner = $('#resetSpinner');
@@ -411,6 +556,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
 
                     setTimeout(function() {{
                         $('#customSearchInput').val('');
+                        $('#filterPanel input').val(''); 
                         table.search('').columns().search('');
                         table.order([[ 7, "desc" ]]);
                         table.draw();
