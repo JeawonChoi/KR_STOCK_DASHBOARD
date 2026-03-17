@@ -1,4 +1,4 @@
-# Ver.08 - 조회 기능 추가, 영업이익률 추가
+# Ver.09 - 상장주식수 추가
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -102,7 +102,7 @@ def get_full_market_data():
     set_naver_custom_fields(session, group1)
     df1 = crawl_market_sum(session, "1차 데이터 수집")
     
-    group2 = ['market_sum', 'per', 'pbr', 'quant']
+    group2 = ['market_sum', 'per', 'pbr', 'quant', 'listed_stock_cnt']
     set_naver_custom_fields(session, group2)
     df2 = crawl_market_sum(session, "2차 데이터 수집")
     
@@ -116,7 +116,6 @@ def get_full_market_data():
     
     print("\n수집된 데이터를 바탕으로 재무비율을 계산합니다...")
     
-    # 1. 보통주배당금 및 배당수익률 계산
     div_col = next((c for c in merged_df.columns if '배당금' in c), None)
     if div_col:
         merged_df = merged_df.rename(columns={div_col: '보통주배당금(원)'})
@@ -133,7 +132,6 @@ def get_full_market_data():
         merged_df['보통주배당금(원)'] = 0
         merged_df['배당수익률'] = 0
 
-    # 2. 영업이익률(%) 계산 로직 추가
     if '매출액' in merged_df.columns and '영업이익' in merged_df.columns:
         merged_df['매출액_num'] = pd.to_numeric(merged_df['매출액'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         merged_df['영업이익_num'] = pd.to_numeric(merged_df['영업이익'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
@@ -143,7 +141,6 @@ def get_full_market_data():
     else:
         merged_df['영업이익률(%)'] = 0
 
-    # 3. 부채비율 계산
     asset_col = next((c for c in merged_df.columns if '자산총계' in c), None)
     debt_col = next((c for c in merged_df.columns if '부채총계' in c), None)
     
@@ -191,8 +188,11 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
     KST = timezone(timedelta(hours=9))
     update_time_str = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     
-    # [수정] 보여줄 컬럼 순서에 '영업이익률(%)' 추가
-    cols = ['종목명', '종목코드', '현재가', '전일비', '등락률', '기관 순매매량', '외국인 순매매량', '외국인 보유율(%)', 
+    if '상장주식수' in df.columns:
+        df = df.rename(columns={'상장주식수': '상장주식수(천주)'})
+        
+    # [수정] '상장주식수(천주)' 컬럼을 '현재가' 바로 다음으로 위치 이동
+    cols = ['종목명', '종목코드', '현재가', '상장주식수(천주)', '전일비', '등락률', '기관 순매매량', '외국인 순매매량', '외국인 보유율(%)', 
             '시가총액', '매출액', '영업이익', '영업이익률(%)', '당기순이익', '부채비율', 'PER', 'PBR', '보통주배당금(원)', '배당수익률', '거래량', '자사주 비율(%)']
     
     df = df[[c for c in cols if c in df.columns]]
@@ -248,13 +248,12 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         if col in df.columns:
             df[col] = df[col].apply(format_net_buy)
 
-    int_cols = ['현재가', '보통주배당금(원)', '시가총액', '매출액', '영업이익', '당기순이익', '거래량']
+    int_cols = ['현재가', '보통주배당금(원)', '시가총액', '매출액', '영업이익', '당기순이익', '거래량', '상장주식수(천주)']
     for col in int_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype(int)
             df[col] = df[col].apply(lambda x: f"{x:,}" if x != 0 else '-')
             
-    # [수정] 실수형 포맷에 '영업이익률(%)' 포함
     float_cols = ['영업이익률(%)', '부채비율', '외국인 보유율(%)', 'PER', 'PBR', '배당수익률', '자사주 비율(%)']
     for col in float_cols:
         if col in df.columns:
@@ -266,7 +265,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             lambda row: f'<a href="https://finance.naver.com/item/main.naver?code={row["종목코드"]}" target="_blank" class="text-info text-decoration-none fw-bold" style="display: inline-block; max-width: {name_max_width}px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;">{row["종목명"]}</a>', axis=1
         )
 
-    # 종목코드를 숨기면서 전체 인덱스가 하나씩 앞으로 당겨집니다.
     df = df.drop(columns=['종목코드'], errors='ignore')
 
     html_table = df.to_html(classes='table table-dark table-striped table-hover align-middle nowrap', table_id='stockTable', index=False, escape=False)
@@ -287,7 +285,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         <link rel="shortcut icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         
-        <title>국내 증시 대시보드</title>
+        <title>국내 증시 대시보드 앱</title>
         
         <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -332,8 +330,8 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <div class="container-fluid">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <div class="d-flex align-items-baseline">
-                    <h2 class="fw-bold m-0">K-Stock</h2>
-                    <span class="update-time">⏱ Update: {update_time_str}</span>
+                    <h2 class="fw-bold m-0">국내 주식 대시보드</h2>
+                    <span class="update-time">⏱ 업데이트: {update_time_str}</span>
                 </div>
                 <button id="resetBtn" class="btn btn-outline-light btn-sm" style="min-width: 80px;">
                     <span class="spinner-border spinner-border-sm d-none" id="resetSpinner" role="status" aria-hidden="true"></span>
@@ -363,67 +361,67 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         <div class="col-6 col-md-4">
                             <div class="filter-label">시가총액 (억)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_7" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_7" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_8" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_8" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         <div class="col-6 col-md-4">
                             <div class="filter-label">영업이익 (억)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_9" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_9" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_10" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_10" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         
                         <div class="col-6 col-md-4">
                             <div class="filter-label">영업이익률 (%)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_10" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_10" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_11" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_11" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         <div class="col-6 col-md-4">
                             <div class="filter-label">PER (배)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_13" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_13" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_14" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_14" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         <div class="col-6 col-md-4">
                             <div class="filter-label">PBR (배)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_14" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_14" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_15" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_15" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         
                         <div class="col-6 col-md-4">
                             <div class="filter-label">부채비율 (%)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_12" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_12" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_13" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_13" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         <div class="col-6 col-md-4">
                             <div class="filter-label">배당수익률 (%)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_16" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_16" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_17" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_17" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                         <div class="col-6 col-md-4">
                             <div class="filter-label">외국인 보유율 (%)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_6" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_6" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_7" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_7" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
 
                         <div class="col-6 col-md-4">
                             <div class="filter-label">자사주 비율 (%)</div>
                             <div class="input-group input-group-sm">
-                                <input type="number" id="min_col_18" class="form-control bg-dark text-light border-secondary" placeholder="최소">
-                                <input type="number" id="max_col_18" class="form-control bg-dark text-light border-secondary" placeholder="최대">
+                                <input type="number" id="min_col_19" class="form-control bg-dark text-light border-secondary" placeholder="최소">
+                                <input type="number" id="max_col_19" class="form-control bg-dark text-light border-secondary" placeholder="최대">
                             </div>
                         </div>
                     </div>
@@ -435,6 +433,11 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         </button>
                     </div>
                 </div>
+            </div>
+            
+            <div class="alert alert-secondary text-center border-secondary text-light bg-dark">
+                ※ 📱 <strong>모바일 앱 모드:</strong> 좌측 '종목명' 고정, 좌우 스와이프 지원.<br>
+                ※ 상승/매수는 <strong><span style="color: #ff4d4d;">▲빨강</span></strong>, 하락/매도는 <strong><span style="color: #4da6ff;">▼파랑</span></strong> 기호.
             </div>
             
             {html_table}
@@ -460,18 +463,18 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                             return isNaN(num) ? null : num;
                         }}
 
-                        // [수정됨] 총 10가지 항목의 인덱스 매핑 (영업이익률: 10번 인덱스 추가)
+                        // [수정됨] 상장주식수가 '현재가' 바로 다음으로 이동함에 따라 +1씩 모두 밀려난 인덱스 적용 완료
                         var filters = [
                             {{ col: 1,  minId: '#min_col_1',  maxId: '#max_col_1' }},   // 현재가
-                            {{ col: 7,  minId: '#min_col_7',  maxId: '#max_col_7' }},   // 시가총액
-                            {{ col: 9,  minId: '#min_col_9',  maxId: '#max_col_9' }},   // 영업이익
-                            {{ col: 10, minId: '#min_col_10', maxId: '#max_col_10' }},  // 영업이익률(%) <- 새로 추가됨
-                            {{ col: 13, minId: '#min_col_13', maxId: '#max_col_13' }},  // PER
-                            {{ col: 14, minId: '#min_col_14', maxId: '#max_col_14' }},  // PBR
-                            {{ col: 12, minId: '#min_col_12', maxId: '#max_col_12' }},  // 부채비율
-                            {{ col: 16, minId: '#min_col_16', maxId: '#max_col_16' }},  // 배당수익률
-                            {{ col: 6,  minId: '#min_col_6',  maxId: '#max_col_6' }},   // 외국인 보유율
-                            {{ col: 18, minId: '#min_col_18', maxId: '#max_col_18' }}   // 자사주 비율
+                            {{ col: 8,  minId: '#min_col_8',  maxId: '#max_col_8' }},   // 시가총액 (7->8)
+                            {{ col: 10, minId: '#min_col_10', maxId: '#max_col_10' }},  // 영업이익 (9->10)
+                            {{ col: 11, minId: '#min_col_11', maxId: '#max_col_11' }},  // 영업이익률(%) (10->11)
+                            {{ col: 14, minId: '#min_col_14', maxId: '#max_col_14' }},  // PER (13->14)
+                            {{ col: 15, minId: '#min_col_15', maxId: '#max_col_15' }},  // PBR (14->15)
+                            {{ col: 13, minId: '#min_col_13', maxId: '#max_col_13' }},  // 부채비율 (12->13)
+                            {{ col: 17, minId: '#min_col_17', maxId: '#max_col_17' }},  // 배당수익률 (16->17)
+                            {{ col: 7,  minId: '#min_col_7',  maxId: '#max_col_7' }},   // 외국인 보유율 (6->7)
+                            {{ col: 19, minId: '#min_col_19', maxId: '#max_col_19' }}   // 자사주 비율 (19유지)
                         ];
 
                         for (var i = 0; i < filters.length; i++) {{
@@ -504,7 +507,8 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                     }},
                     "searching": true, 
                     "ordering": true,
-                    "order": [[ 7, "desc" ]], 
+                    // [수정됨] 시가총액 인덱스가 8번으로 밀려났으므로 기본 정렬 기준 8로 변경
+                    "order": [[ 8, "desc" ]], 
                     "language": {{ 
                         "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/ko.json",
                         "info": "총 _TOTAL_개 종목",
@@ -576,7 +580,8 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         $('#customSearchInput').val('');
                         $('#filterPanel input').val(''); 
                         table.search('').columns().search('');
-                        table.order([[ 7, "desc" ]]);
+                        // [수정됨] 초기화 시 시가총액(8번) 기준으로 정렬되도록 복구
+                        table.order([[ 8, "desc" ]]);
                         table.draw();
 
                         $btn.prop('disabled', false);
@@ -598,4 +603,3 @@ if __name__ == "__main__":
     df = get_full_market_data()
     df = merge_treasury_stock(df, 'data.csv')
     process_and_save_html(df, filename="index.html", name_max_width=90)
-
