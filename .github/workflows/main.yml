@@ -6,17 +6,19 @@ on:
     - cron: '30 11 * * 1-5'
   workflow_dispatch: # 내가 원할 때 수동으로 버튼을 눌러 실행할 수 있는 옵션
 
+# [추가된 부분] 경고를 없애기 위해 강제로 Node.js 24 엔진을 사용하도록 설정
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
     - name: 저장소 코드 불러오기
-      # [수정] v3에서 최신 버전인 v4로 변경
       uses: actions/checkout@v4
 
     - name: 파이썬 환경 세팅
-      # [수정] v4에서 최신 버전인 v5로 변경
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
