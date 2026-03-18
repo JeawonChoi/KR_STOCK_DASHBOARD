@@ -265,7 +265,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
 
     df = df.drop(columns=['종목코드'], errors='ignore')
 
-    # [핵심 수정] 긴 컬럼명 중간에 <br> 태그를 넣어 두 줄로 강제 분리
     rename_for_html = {
         '상장주식수(천주)': '상장주식수<br>(천주)',
         '기관 순매매량': '기관<br>순매매량',
@@ -297,7 +296,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         <link rel="shortcut icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         
-        <title>국내 증시 대시보드</title>
+        <title>국내 증시 대시보드 앱</title>
         
         <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -312,7 +311,11 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             
             .update-time {{ font-size: 0.75rem; color: #a0a0a0; font-weight: normal; margin-left: 8px; }}
             
-            /* [수정됨] 헤더(th) 글씨 크기 축소, 줄간격 조정 및 패딩 축소로 공간 최적화 */
+            /* [수정됨] 브라우저 너비에 맞게 꽉 채우기 및 헤더 정렬 틀어짐 방지 CSS */
+            #stockTable {{ width: 100% !important; margin: 0 auto; clear: both; border-collapse: collapse; table-layout: auto; }}
+            .dataTables_scrollHeadInner {{ width: 100% !important; box-sizing: border-box; }}
+            .dataTables_scrollHeadInner table {{ width: 100% !important; margin: 0 !important; }}
+            
             #stockTable th {{ 
                 background-color: #2c2c2c; 
                 color: #e0e0e0; 
@@ -324,7 +327,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                 padding: 6px 8px; 
             }}
             
-            /* [수정됨] 내용(td) 패딩 축소로 가로 길이 압축 */
             #stockTable td {{ 
                 text-align: right; 
                 white-space: nowrap; 
@@ -359,7 +361,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <div class="container-fluid">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <div class="d-flex align-items-baseline">
-                    <h2 class="fw-bold m-0">K-Stock</h2>
+                    <h2 class="fw-bold m-0">국내 주식 대시보드</h2>
                     <span class="update-time">⏱ 업데이트: {update_time_str}</span>
                 </div>
                 <button id="resetBtn" class="btn btn-outline-light btn-sm" style="min-width: 80px;">
@@ -464,6 +466,11 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                 </div>
             </div>
             
+            <div class="alert alert-secondary text-center border-secondary text-light bg-dark">
+                ※ 📱 <strong>모바일 앱 모드:</strong> 좌측 '종목명' 고정, 좌우 스와이프 지원.<br>
+                ※ 상승/매수는 <strong><span style="color: #ff4d4d;">▲빨강</span></strong>, 하락/매도는 <strong><span style="color: #4da6ff;">▼파랑</span></strong> 기호.
+            </div>
+            
             {html_table}
         </div>
 
@@ -531,12 +538,24 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                     "searching": true, 
                     "ordering": true,
                     "order": [[ 8, "desc" ]], 
+                    "autoWidth": false, // [수정됨] 자동 계산 방지하여 100% 꽉 차게 적용
                     "language": {{ 
                         "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/ko.json",
                         "info": "총 _TOTAL_개 종목",
                         "infoFiltered": "(전체 _MAX_개 중 필터링됨)",
                         "infoEmpty": "조건에 맞는 검색 결과가 없습니다."
+                    }},
+                    "initComplete": function(settings, json) {{
+                        // [수정됨] 초기 로딩 시 컬럼 정렬 틀어짐 방지
+                        setTimeout(function() {{
+                            table.columns.adjust().draw();
+                        }}, 200);
                     }}
+                }});
+
+                // [수정됨] 브라우저 창 크기가 조절될 때 정렬 다시 맞추기
+                $(window).on('resize', function () {{
+                    table.columns.adjust();
                 }});
 
                 function performSearch() {{
