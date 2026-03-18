@@ -1,4 +1,3 @@
-# Ver.09 - 상장주식수 추가
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -191,7 +190,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
     if '상장주식수' in df.columns:
         df = df.rename(columns={'상장주식수': '상장주식수(천주)'})
         
-    # [수정] '상장주식수(천주)' 컬럼을 '현재가' 바로 다음으로 위치 이동
     cols = ['종목명', '종목코드', '현재가', '상장주식수(천주)', '전일비', '등락률', '기관 순매매량', '외국인 순매매량', '외국인 보유율(%)', 
             '시가총액', '매출액', '영업이익', '영업이익률(%)', '당기순이익', '부채비율', 'PER', 'PBR', '보통주배당금(원)', '배당수익률', '거래량', '자사주 비율(%)']
     
@@ -267,6 +265,20 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
 
     df = df.drop(columns=['종목코드'], errors='ignore')
 
+    # [핵심 수정] 긴 컬럼명 중간에 <br> 태그를 넣어 두 줄로 강제 분리
+    rename_for_html = {
+        '상장주식수(천주)': '상장주식수<br>(천주)',
+        '기관 순매매량': '기관<br>순매매량',
+        '외국인 순매매량': '외국인<br>순매매량',
+        '외국인 보유율(%)': '외국인<br>보유율(%)',
+        '영업이익률(%)': '영업이익률<br>(%)',
+        '당기순이익': '당기<br>순이익',
+        '보통주배당금(원)': '보통주<br>배당금(원)',
+        '배당수익률': '배당<br>수익률',
+        '자사주 비율(%)': '자사주<br>비율(%)'
+    }
+    df = df.rename(columns=rename_for_html)
+
     html_table = df.to_html(classes='table table-dark table-striped table-hover align-middle nowrap', table_id='stockTable', index=False, escape=False)
     td_max_width = name_max_width + 5
 
@@ -285,7 +297,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         <link rel="shortcut icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         
-        <title>국내 증시 대시보드 앱</title>
+        <title>국내 증시 대시보드</title>
         
         <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -300,8 +312,25 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
             
             .update-time {{ font-size: 0.75rem; color: #a0a0a0; font-weight: normal; margin-left: 8px; }}
             
-            #stockTable th {{ background-color: #2c2c2c; color: #e0e0e0; text-align: center; vertical-align: middle; white-space: nowrap; }}
-            #stockTable td {{ text-align: right; white-space: nowrap; border-color: #333; }}
+            /* [수정됨] 헤더(th) 글씨 크기 축소, 줄간격 조정 및 패딩 축소로 공간 최적화 */
+            #stockTable th {{ 
+                background-color: #2c2c2c; 
+                color: #e0e0e0; 
+                text-align: center; 
+                vertical-align: middle; 
+                white-space: nowrap; 
+                font-size: 0.8rem; 
+                line-height: 1.3; 
+                padding: 6px 8px; 
+            }}
+            
+            /* [수정됨] 내용(td) 패딩 축소로 가로 길이 압축 */
+            #stockTable td {{ 
+                text-align: right; 
+                white-space: nowrap; 
+                border-color: #333; 
+                padding: 6px 8px; 
+            }}
             
             #stockTable td:nth-child(1) {{ text-align: left; max-width: {td_max_width}px; min-width: {td_max_width}px; }}
             #stockTable td:nth-child(2) {{ text-align: center; }}
@@ -433,8 +462,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         </button>
                     </div>
                 </div>
-            </div>  
-
+            </div>
             
             {html_table}
         </div>
@@ -459,18 +487,17 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                             return isNaN(num) ? null : num;
                         }}
 
-                        // [수정됨] 상장주식수가 '현재가' 바로 다음으로 이동함에 따라 +1씩 모두 밀려난 인덱스 적용 완료
                         var filters = [
                             {{ col: 1,  minId: '#min_col_1',  maxId: '#max_col_1' }},   // 현재가
-                            {{ col: 8,  minId: '#min_col_8',  maxId: '#max_col_8' }},   // 시가총액 (7->8)
-                            {{ col: 10, minId: '#min_col_10', maxId: '#max_col_10' }},  // 영업이익 (9->10)
-                            {{ col: 11, minId: '#min_col_11', maxId: '#max_col_11' }},  // 영업이익률(%) (10->11)
-                            {{ col: 14, minId: '#min_col_14', maxId: '#max_col_14' }},  // PER (13->14)
-                            {{ col: 15, minId: '#min_col_15', maxId: '#max_col_15' }},  // PBR (14->15)
-                            {{ col: 13, minId: '#min_col_13', maxId: '#max_col_13' }},  // 부채비율 (12->13)
-                            {{ col: 17, minId: '#min_col_17', maxId: '#max_col_17' }},  // 배당수익률 (16->17)
-                            {{ col: 7,  minId: '#min_col_7',  maxId: '#max_col_7' }},   // 외국인 보유율 (6->7)
-                            {{ col: 19, minId: '#min_col_19', maxId: '#max_col_19' }}   // 자사주 비율 (19유지)
+                            {{ col: 8,  minId: '#min_col_8',  maxId: '#max_col_8' }},   // 시가총액
+                            {{ col: 10, minId: '#min_col_10', maxId: '#max_col_10' }},  // 영업이익
+                            {{ col: 11, minId: '#min_col_11', maxId: '#max_col_11' }},  // 영업이익률(%)
+                            {{ col: 14, minId: '#min_col_14', maxId: '#max_col_14' }},  // PER
+                            {{ col: 15, minId: '#min_col_15', maxId: '#max_col_15' }},  // PBR
+                            {{ col: 13, minId: '#min_col_13', maxId: '#max_col_13' }},  // 부채비율
+                            {{ col: 17, minId: '#min_col_17', maxId: '#max_col_17' }},  // 배당수익률
+                            {{ col: 7,  minId: '#min_col_7',  maxId: '#max_col_7' }},   // 외국인 보유율
+                            {{ col: 19, minId: '#min_col_19', maxId: '#max_col_19' }}   // 자사주 비율
                         ];
 
                         for (var i = 0; i < filters.length; i++) {{
@@ -503,7 +530,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                     }},
                     "searching": true, 
                     "ordering": true,
-                    // [수정됨] 시가총액 인덱스가 8번으로 밀려났으므로 기본 정렬 기준 8로 변경
                     "order": [[ 8, "desc" ]], 
                     "language": {{ 
                         "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/ko.json",
@@ -576,7 +602,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         $('#customSearchInput').val('');
                         $('#filterPanel input').val(''); 
                         table.search('').columns().search('');
-                        // [수정됨] 초기화 시 시가총액(8번) 기준으로 정렬되도록 복구
                         table.order([[ 8, "desc" ]]);
                         table.draw();
 
