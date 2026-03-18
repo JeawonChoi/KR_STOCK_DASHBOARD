@@ -296,7 +296,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         <link rel="shortcut icon" href="https://cdn-icons-png.flaticon.com/512/2942/2942244.png">
         
-        <title>국내 증시 대시보드 앱</title>
+        <title>국내 증시 대시보드</title>
         
         <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -361,7 +361,7 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
         <div class="container-fluid">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <div class="d-flex align-items-baseline">
-                    <h2 class="fw-bold m-0">국내 주식 대시보드</h2>
+                    <h2 class="fw-bold m-0">K-Stock</h2>
                     <span class="update-time">⏱ 업데이트: {update_time_str}</span>
                 </div>
                 <button id="resetBtn" class="btn btn-outline-light btn-sm" style="min-width: 80px;">
@@ -464,11 +464,6 @@ def process_and_save_html(df, filename="index.html", name_max_width=90):
                         </button>
                     </div>
                 </div>
-            </div>
-            
-            <div class="alert alert-secondary text-center border-secondary text-light bg-dark">
-                ※ 📱 <strong>모바일 앱 모드:</strong> 좌측 '종목명' 고정, 좌우 스와이프 지원.<br>
-                ※ 상승/매수는 <strong><span style="color: #ff4d4d;">▲빨강</span></strong>, 하락/매도는 <strong><span style="color: #4da6ff;">▼파랑</span></strong> 기호.
             </div>
             
             {html_table}
